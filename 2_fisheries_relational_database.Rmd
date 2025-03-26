@@ -40,24 +40,36 @@ Looking deeper in the `Database Structure` document, there is a table called "Ta
 
 The other good metadata file provided is called `Database Table Fields`. This is a spreadsheet that provides explanations for the variable names that represent the broad range of fishery metrics presented in this dataset. Now that we have glanced through the metadata, we can start a fisheries analysis.
 
-### Annual total catch by stock
-
-We are going to look in the `timeseries_values_views` dataset for annual total catch for each fish stock. The `TCbest` column is the best available annual total catch data (in metric tons). The actual data is all in `timeseries`, but the `timeseries` table may have multiple stock assessments for a given year, which complicates things. We'll stick with the simplified `timeseries_values_views` table. If we join it with the `stock` dataset using `stockid` then we can add more information about each stock, such as `scientificname` and `region`. If we join these with the `taxonomy` table using `tsn` then we can add more info about the species classification and the fishery type.
+Most of the data in the RAM database is in the `timeseries` table, but the metadata for this table is stored in `tsmetrics`. Using the table in the Database Structure file, we see that these two tables can be joined by matching the `tsid` column in `timeseries` with the `tsunique` column in the `tsmetrics` table. We do this with a `left_join()` and check the dimensions of our tables before and after the join to make sure we didn't add or subtract any rows from the `timeseries` table. Now we have a better understanding of the meaning of each row in our new table:
 
 ```{r, message=FALSE}
 library(tidyverse)
 ```
 
 ```{r}
+glimpse(tsmetrics)
+glimpse(timeseries)
+timeseries_tsmetrics = timeseries %>% left_join(tsmetrics, by=c("tsid" = "tsunique"))
+dim(timeseries)
+dim(timeseries_tsmetrics)
+glimpse(timeseries_tsmetrics)
+```
+
+This is just to get you warmed up to relational databases. Now let's use some other tables for some cool analyses. 
+
+### Annual total catch by stock
+
+We are going to look in the `timeseries_values_views` dataset for annual total catch for each fish stock. The `TCbest` column is the best available annual total catch data (in metric tons). The actual data is all in `timeseries`, but the `timeseries` table may have multiple stock assessments for a given year, which complicates things. We'll stick with the simplified `timeseries_values_views` table. If we join it with the `stock` dataset using `stockid` then we can add more information about each stock, such as `scientificname` and `region`. If we join these with the `taxonomy` table using `tsn` then we can add more info about the species classification and the fishery type.
+
+```{r}
 # Check units for TCbest by searching for this value type in the tsmetrics table
 tsmetrics %>% filter(tsshort == "TCbest")
-unique(timeseries_units_views$TCbest) # All TCbest units are in metric tons
+# unique(timeseries_units_views$TCbest) # All TCbest units are in metric tons
 
 # Ensure that there is one tsn for each scientific name in the taxonomy table
 length(unique(taxonomy$scientificname))
 length(unique(taxonomy$tsn)) # Taxonomic Serial Number
 
-dim(timeseries_values_views)
 # Join timeseries_values_views, stock and taxonomy tables
 fish = timeseries_values_views %>%
   left_join(stock, by=c("stockid", "stocklong")) %>%
@@ -177,14 +189,17 @@ collapse_yr = collapse %>%
 
 # Plot a histogram of first collapse year
 ggplot(data = collapse_yr, aes(x=first_collapse_yr)) +
-  geom_histogram(color="black", fill="white", binwidth=5) # bin into 5-yr-intervals
+  geom_histogram(color="black", fill="salmon", binwidth=5) # bin into 5-yr-intervals
 
 # Create a time series of # of stocks ever collapsed / total stocks
-n_stock_assessments = length(unique(collapse$stockid))
+n_stocks = length(unique(collapse$stockid))
 collapse_ts = collapse_yr %>%
   count(first_collapse_yr) %>% # Count number of stocks that collapsed each yr
   mutate(cum_first_collapse_yr = cumsum(n),
-         ratio_collapsed_yet = cum_first_collapse_yr/n_stock_assessments)
+         ratio_collapsed_yet = cum_first_collapse_yr/n_stocks)
+
+ggplot(data = collapse_ts, aes(x=first_collapse_yr, y=cum_first_collapse_yr)) +
+  geom_line()
 
 ggplot(data = collapse_ts, aes(x=first_collapse_yr, y=ratio_collapsed_yet)) +
   geom_line()
